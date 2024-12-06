@@ -13,6 +13,9 @@ class YOLOVideoPublisher(Node):
         self.timer = self.create_timer(0.1, self.timer_callback)  # 10 FPS
         self.cap = cv2.VideoCapture(0)  # video0 디바이스 열기
 
+        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
         if not self.cap.isOpened():
             self.get_logger().error("Cannot open video device")
             raise RuntimeError("Cannot open video device")

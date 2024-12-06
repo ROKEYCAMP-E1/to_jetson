@@ -1,0 +1,15 @@
+# colcon build 생성물 제외
+build/
+install/
+log/
+
+# Python 파일 제외
+*.pyc
+__pycache__/
+
+# Editor 및 OS 파일 제외
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
