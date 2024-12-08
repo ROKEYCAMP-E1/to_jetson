@@ -71,7 +71,7 @@ python3 just_image_save.py
 ----------------------------------
 PC에서 YOLO tracking 밑 cmd_vel pub하기
 amr 터미널1
-cd bellboy
+cd amr
 python3 RawImagePub.py 
 
 PC 터미널1
