@@ -7,7 +7,6 @@ from std_msgs.msg import String
 import math
 
 
-
 class MoveInit(Node):
     def __init__(self):
         super().__init__('move_init')
@@ -15,7 +14,6 @@ class MoveInit(Node):
         self.current_pose = None
         self.timer = None
         self._goal_handle = None
-        self.triggered = False  # 플래그 변수 추가
 
         # Action client for NavigateToPose
         self.action_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
@@ -36,21 +34,19 @@ class MoveInit(Node):
         Triggered when a service termination message is received.
         Activates AMCL pose subscription to get the current position.
         """
-        if not self.triggered:  # 이미 동작 중인지 확인
-            self.triggered = True
-            self.get_logger().info(f"Service termination message received: {msg.data}")
+        self.get_logger().info(f"Service termination message received: {msg.data}")
 
-            # Subscribe to AMCL pose to get the current position
-            if not self.amcl_pose_subscriber:
-                self.amcl_pose_subscriber = self.create_subscription(
-                    PoseWithCovarianceStamped,
-                    '/amcl_pose',
-                    self.amcl_pose_callback,
-                    10
-                )
-                self.get_logger().info("Subscribed to AMCL pose to get current position.")
-            else:
-                self.get_logger().info("Already subscribed to AMCL pose.")
+        # Subscribe to AMCL pose to get the current position
+        if not self.amcl_pose_subscriber:
+            self.amcl_pose_subscriber = self.create_subscription(
+                PoseWithCovarianceStamped,
+                '/amcl_pose',
+                self.amcl_pose_callback,
+                10
+            )
+            self.get_logger().info("Subscribed to AMCL pose to get current position.")
+        else:
+            self.get_logger().info("Already subscribed to AMCL pose.")
 
     def amcl_pose_callback(self, msg):
         """

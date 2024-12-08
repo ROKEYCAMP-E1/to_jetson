@@ -21,16 +21,20 @@ class MoveGoal(Node):
             durability=DurabilityPolicy.VOLATILE,      # 연결 중에만 데이터 유지
             depth=10                                   # 최근 10개의 메시지만 유지
         )
-
-        self.action_client = ActionClient(self, FollowWaypoints, '/follow_waypoints')
-        
         self._goal_handle = None
         self.goal_sent = False  # Goal이 한 번만 전송되도록 관리
         self.goal_canceled = False  # Goal이 한 번만 취소되도록 관리
         self.timer = None  # 타이머 객체
         self.detect_person = False
+        self.detect_luggage = False
 
 
+        self.action_client = ActionClient(
+            self, FollowWaypoints, 
+            '/follow_waypoints'
+        )
+        
+    
         # 초기 위치 퍼블리셔 추가
         self.initial_pose_publisher = self.create_publisher(
             PoseWithCovarianceStamped,
@@ -43,11 +47,17 @@ class MoveGoal(Node):
             '/cmd_vel',
             10
         )
+        self.DetectLuggage_subscriber = self.create_subscription(
+            Bool,  # 메시지 타입
+            '/DetectLuggage',  # 토픽 이름
+            self.detect_luggage_callback, # 콜백 함수
+            qos_profile
+        )
 
         self.DetectPerson_subscriber = self.create_subscription(
             Bool,  # 메시지 타입
-            '/DetectPerson',  # 토픽 이름
-            self.detect_callback,  # 콜백 함수
+            'DetectPerson',  # 토픽 이름
+            self.detect_person_callback,  # 콜백 함수
             qos_profile  # QoS 설정
         )
 
@@ -55,8 +65,18 @@ class MoveGoal(Node):
             String, 
             '/service_terminate', 
             10)
+        
+    def detect_luggage_callback(self, msg):
+        """DetectLuggage 콜백 함수: Luggage를 감지하면 액션 실행"""
+        self.get_logger().info(f"Received DetectLuggage message: {msg.data}")
+        
+        if msg.data:  # 감지된 경우
+            self.detect_luggage = True
+            self.get_logger().info("Luggage detected. Starting action.")
+            self.start_action_after_delay()  # 액션 실행
 
-    def detect_callback(self, msg):
+
+    def detect_person_callback(self, msg):
         # 메시지 내용 확인
         self.get_logger().info(f"Received detection message: {msg.data}")
         
@@ -65,6 +85,12 @@ class MoveGoal(Node):
             self.get_logger().info("Condition met. Canceling goal...")
             self.cancel_goal()
             self.goal_canceled = True  # Goal 취소 플래그 설정
+
+    def start_action_after_delay(self):
+        """DetectLuggage 감지 후 10초 대기 후 동작"""
+        self.get_logger().info("Starting action after delay.")
+        self.send_goal()
+        self.destroy_timer(self.timer)
 
     # 초기 위치를 퍼블리시
     def publish_initial_pose(self, x, y, yaw):
@@ -113,8 +139,8 @@ class MoveGoal(Node):
         waypoint1.header.stamp.sec = 0
         waypoint1.header.stamp.nanosec = 0
         waypoint1.header.frame_id = "map"  # 프레임 ID를 설정 (예: "map")
-        waypoint1.pose.position.x = -0.7228422842949516
-        waypoint1.pose.position.y = -0.2197059198680402
+        waypoint1.pose.position.x = 0.24466873107422488
+        waypoint1.pose.position.y = -0.4085067988873908
         waypoint1.pose.position.z = 0.0
 
         waypoint1_yaw = 0.0
@@ -152,7 +178,7 @@ class MoveGoal(Node):
 
 
         self.timer = self.create_timer(30.0, self.check_person_after_timeout)
-
+        self.get_logger().info("Timer for 30 seconds has been started.")
 
     def check_person_after_timeout(self):
         if not self.detect_person:  # DetectPerson 값이 False이면 서비스 종료
@@ -160,9 +186,12 @@ class MoveGoal(Node):
 
             # 서비스 종료 메시지 발행
             terminate_msg = String()
-            terminate_msg.data = "People not found"
+            terminate_msg.data = "AMR"
             self.service_terminate_publisher.publish(terminate_msg)
-
+            
+            if self._goal_handle is not None:
+                self.cancel_goal()
+                
             # 타이머 삭제
             self.destroy_timer(self.timer)
 
@@ -183,7 +212,7 @@ class MoveGoal(Node):
     def spin_robot(self):
         # Twist 메시지를 사용해 로봇을 회전
         twist_msg = Twist()
-        twist_msg.angular.z = 0.5  # 회전 속도 (라디안/초)
+        twist_msg.angular.z = 1.0  # 회전 속도 (라디안/초)
         
         spin_time = 4 * math.pi / twist_msg.angular.z  # 한 바퀴 회전 시간 계산
         start_time = time.time()
@@ -217,7 +246,7 @@ class MoveGoal(Node):
 
     def cancel_done_callback(self, future):
         cancel_response = future.result()
-        if len(cancel_response.goals_cancelled) > 0:
+        if len(cancel_response.goals_canceling) > 0:
             self.get_logger().info('Goal successfully canceled.')
         else:
             self.get_logger().info('Goal cancellation failed.')
@@ -233,9 +262,6 @@ def main():
     initial_yaw = 0.0
     node.publish_initial_pose(initial_x, initial_y, initial_yaw)
 
-    # 목표 좌표 설정
-    
-    node.send_goal()
 
     rclpy.spin(node)
     rclpy.shutdown()

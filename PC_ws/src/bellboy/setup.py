@@ -21,7 +21,8 @@ setup(
     entry_points={
         'console_scripts': [
           'move_goal_waypoint=bellboy.move_goal_waypoint:main',
-	  
+          'move_init_pose=bellboy.move_init_pose:main',
+          'move_init_pose2=bellboy.move_init_pose2:main'
         ],
     },
 )
