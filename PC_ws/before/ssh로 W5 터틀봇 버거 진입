@@ -1,0 +1,37 @@
+-------------ON-------------
+openCR먼저 켜기: 켜지면 소리가 날 것
+jetson-orin을 다음으로 켜기: 빨간색 스위치
+
+ping 192.168.1.9
+ssh -X rokey9@192.168.1.9
+rokey1234
+
+
+-------------OFF-------------
+jetson-orin의 터미널에서 셧다운하기
+
+터미널1
+sudo shutdown now
+rokey1234
+jetson-orin 먼저 종료하기: 빨간색 스위치
+openCR를 다음으로 종료하기
+
+------------------------------
+
+인터넷 없이 네트워크 만으로 디렉토리 보내기
+
+#0사용방법
+출발PC 터미널1
+scp -r [출발 디렉토리 명]/ rokey9@192.168.1.9:/home/rokey9/bellboy_ws/[도착 디렉토리 명]
+
+ip addr
+
+#1출발하는 경우-PC to robot
+scp -r bellboy_ws/ rokey9@192.168.1.9:/home/rokey9/bellboy_ws
+#2복귀하는 경우-robot to PC
+scp -r bellboy_ws/ kimdahun@192.168.1.122:/home/kimdahun/bellboy_ws
+
+
+-------------------------------
+bringup은 amr에서 한다.
+
