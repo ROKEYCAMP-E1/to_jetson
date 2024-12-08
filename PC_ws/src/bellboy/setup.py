@@ -20,10 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-           'move_goal=bellboy.move_goal:main',
-	   'move_goal2=bellboy.move_goal2:main',
-	  'move_goal3=bellboy.move_goal3:main',
-	  'move_goal_n_tracking=bellboy.integration_amr_control_pub:main',
+          'move_goal_waypoint=bellboy.move_goal_waypoint:main',
 	  
         ],
     },
