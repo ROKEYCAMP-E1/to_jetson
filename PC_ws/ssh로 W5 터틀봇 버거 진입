@@ -48,7 +48,7 @@ ros2 launch turtlebot3_navigation2 navigation2.launch.py map:=$HOME/bellboy_ws/m
 tracking and image save
 
 amr 터미널1
-cd bellboy
+cd bellboy_ws
 python3 amr_control_pub_plz.py 
 
 amr 터미널2
@@ -72,10 +72,22 @@ python3 just_image_save.py
 PC에서 YOLO tracking 밑 cmd_vel pub하기
 amr 터미널1
 cd bellboy
-python3 raw_image_pub.py 
+python3 RawImagePub.py 
 
 PC 터미널1
-python3 image_processor.py 
+python3 ImageToCommand_UI.py 
 
-PC 터미널1
-python3 amr_control_sub.py
+PC 터미널2
+python3 CommandToCmdVel.py
+
+fake topic pub1
+ros2 topic pub CustomerDecision std_msgs/msg/Bool "data: True"
+ros2 topic pub /ServiceTerminate std_msgs/msg/String "data: USER"
+
+check topic1
+ros2 topic echo /ServiceTerminate 
+
+
+
+
+
