@@ -48,7 +48,7 @@ ros2 launch turtlebot3_navigation2 navigation2.launch.py map:=$HOME/bellboy_ws/m
 tracking and image save
 
 amr 터미널1
-cd bellboy_ws
+cd amr
 python3 amr_control_pub_plz.py 
 
 amr 터미널2

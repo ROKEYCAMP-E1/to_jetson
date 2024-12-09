@@ -5,28 +5,24 @@ from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
 from std_msgs.msg import String
 import math
-
+import time
 
 
 class MoveInit(Node):
     def __init__(self):
         super().__init__('move_init')
 
-        self.current_pose = None
-        self.timer = None
+        self.current_pose = None  # 현재 위치를 저장
         self._goal_handle = None
-        self.triggered = False  # 플래그 변수 추가
+        self.triggered = False  # 플래그 변수
 
         # Action client for NavigateToPose
         self.action_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
 
-        # AMCL pose subscriber (deferred activation)
-        self.amcl_pose_subscriber = None
-
         # Service terminate subscriber
         self.service_terminate_subscriber = self.create_subscription(
             String,
-            '/service_terminate',
+            '/ServiceTerminate',
             self.terminate_callback,
             10
         )
@@ -34,58 +30,56 @@ class MoveInit(Node):
     def terminate_callback(self, msg):
         """
         Triggered when a service termination message is received.
-        Activates AMCL pose subscription to get the current position.
+        Waits for 10 seconds, then subscribes to AMCL to get the current position.
         """
         if not self.triggered:  # 이미 동작 중인지 확인
             self.triggered = True
             self.get_logger().info(f"Service termination message received: {msg.data}")
+            
+            # 10초 대기
+            self.get_logger().info("Waiting for 10 seconds before getting current position...")
+            time.sleep(10)
 
-            # Subscribe to AMCL pose to get the current position
-            if not self.amcl_pose_subscriber:
-                self.amcl_pose_subscriber = self.create_subscription(
-                    PoseWithCovarianceStamped,
-                    '/amcl_pose',
-                    self.amcl_pose_callback,
-                    10
-                )
-                self.get_logger().info("Subscribed to AMCL pose to get current position.")
-            else:
-                self.get_logger().info("Already subscribed to AMCL pose.")
+            # AMCL pose 구독 시작
+            self.amcl_pose_subscriber = self.create_subscription(
+                PoseWithCovarianceStamped,
+                '/amcl_pose',
+                self.amcl_pose_callback,
+                10
+            )
+            self.get_logger().info("Subscribed to AMCL pose to get current position.")
 
     def amcl_pose_callback(self, msg):
         """
         Callback to receive the current position from AMCL.
         Cancels subscription after receiving the first position.
         """
-        if self.current_pose is None:
-            self.current_pose = msg
+        if self.current_pose is None:  # 현재 위치가 없는 경우만 처리
+            self.current_pose = msg  # 현재 위치 저장
             self.get_logger().info(
                 f"AMCL position received: x={msg.pose.pose.position.x}, y={msg.pose.pose.position.y}"
             )
-            # Cancel the AMCL pose subscription after receiving the first position
+
+            # 구독 중단
             self.destroy_subscription(self.amcl_pose_subscriber)
-            self.amcl_pose_subscriber = None
-            # Proceed to send the robot to the initial position
-            self.timer = self.create_timer(10.0, self.send_init_pose)
+
+            # 초기 위치로 이동 요청
+            self.send_init_pose()
 
     def send_init_pose(self):
         """
         Send the robot to the initial position.
         """
-        if self.timer:
-            self.timer.cancel()
-            self.timer = None
-
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose.header.frame_id = 'map'
         goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
 
-        # Set the initial position (example coordinates)
+        # 초기 위치 설정 (예제 좌표)
         goal_msg.pose.pose.position.x = 0.1007787823513794
         goal_msg.pose.pose.position.y = -0.01276879961445528
         goal_msg.pose.pose.position.z = 0.0
 
-        # Set the orientation
+        # 방향 설정
         goal_msg.pose.pose.orientation = self.euler_to_quaternion(0, 0, 0.0)
 
         self.get_logger().info('Waiting for action server...')

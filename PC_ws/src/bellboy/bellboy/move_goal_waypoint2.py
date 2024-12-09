@@ -1,4 +1,4 @@
-#move_goal_waypoint.py
+#move_goal_waypoint2.py
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseWithCovarianceStamped, Quaternion,PoseStamped
@@ -11,42 +11,43 @@ import time
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
 
-class MoveGoal(Node):
+class MoveWaypointGoal(Node):
     def __init__(self):
-        super().__init__('move_goal')
-        
-        # QoS 설정: 속도 위주
+        super().__init__('Move_Waypoint_Goal')
+
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,  # 데이터 손실 가능
             durability=DurabilityPolicy.VOLATILE,      # 연결 중에만 데이터 유지
             depth=10                                   # 최근 10개의 메시지만 유지
         )
+
         self._goal_handle = None
         self.goal_sent = False  # Goal이 한 번만 전송되도록 관리
         self.goal_canceled = False  # Goal이 한 번만 취소되도록 관리
-        self.timer = None  # 타이머 객체
+
         self.detect_person = False
         self.detect_luggage = False
 
+        self.timer = None  # 타이머 객체
 
-        self.action_client = ActionClient(
-            self, FollowWaypoints, 
-            '/follow_waypoints'
-        )
-        
-    
-        # 초기 위치 퍼블리셔 추가
         self.initial_pose_publisher = self.create_publisher(
             PoseWithCovarianceStamped,
             '/initialpose',
             10
         )
 
+
         self.cmd_vel_publisher = self.create_publisher(
             Twist,
             '/cmd_vel',
             10
         )
+
+        self.action_client = ActionClient(
+            self, FollowWaypoints, 
+            '/follow_waypoints'
+        )
+
         self.DetectLuggage_subscriber = self.create_subscription(
             Bool,  # 메시지 타입
             '/DetectLuggage',  # 토픽 이름
@@ -61,24 +62,12 @@ class MoveGoal(Node):
             qos_profile  # QoS 설정
         )
 
-        self.service_terminate_publisher = self.create_publisher(
+
+        self.ServiceTerminate_publisher = self.create_publisher(
             String, 
             '/ServiceTerminate', 
             10
         )
-        
-
-    def terminate_service_callback(self, msg):
-        self.get_logger().info(f"ServiceTerminate message received: {msg.data}")
-        if msg.data == "AMR":
-            self.get_logger().info("ServiceTerminate received. Terminating and initiating return to initial position.")
-            self.cancel_goal()  # Goal 취소
-            self.start_initial_position()  # 초기 위치 복귀 요청
-
-    def start_initial_position(self):
-        # 초기 위치 복귀 스크립트 실행 요청 (move_init_pose.py)
-        self.get_logger().info("Returning to initial position.")
-        # ROS2에서 별도 노드 실행 요청이 필요할 경우 launch나 action call로 구현 가능
 
 
     def detect_luggage_callback(self, msg):
@@ -88,38 +77,22 @@ class MoveGoal(Node):
         if msg.data:  # 감지된 경우
             self.detect_luggage = True
             self.get_logger().info("Luggage detected. Starting action.")
-            self.start_action_after_delay()  # 액션 실행
+            self.send_goal()  # 액션 실행
 
+    
 
-    def detect_person_callback(self, msg):
-        # 메시지 내용 확인
-        self.get_logger().info(f"Received detection message: {msg.data}")
-        
-        # 특정 조건 만족 시 goal 취소
-        if msg.data==1 and not self.goal_canceled:  # 메시지 조건 및 중복 실행 방지
-            self.get_logger().info("Condition met. Canceling goal...")
-            self.cancel_goal()
-            self.goal_canceled = True  # Goal 취소 플래그 설정
-
-    def start_action_after_delay(self):
-        """DetectLuggage 감지 후 10초 대기 후 동작"""
-        self.get_logger().info("Starting action after delay.")
-        self.send_goal()
-        self.destroy_timer(self.timer)
-
-    # 초기 위치를 퍼블리시
-    def publish_initial_pose(self, x, y, yaw):
+    def publish_initial_pose(self):
         msg = PoseWithCovarianceStamped()
         msg.header.frame_id = "map"
         msg.header.stamp = self.get_clock().now().to_msg()
 
         # 위치 설정
-        msg.pose.pose.position.x = x
-        msg.pose.pose.position.y = y
+        msg.pose.pose.position.x = 0.1007787823513794
+        msg.pose.pose.position.y =-0.01276879961445528
         msg.pose.pose.position.z = 0.0
 
         # 방향 설정 (쿼터니언)
-        msg.pose.pose.orientation = self.euler_to_quaternion(0, 0, yaw)
+        msg.pose.pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
 
         # Covariance 설정 (기본값)
         msg.pose.covariance = [
@@ -133,17 +106,10 @@ class MoveGoal(Node):
 
         # 초기 위치 퍼블리시
         self.initial_pose_publisher.publish(msg)
-        self.get_logger().info(f"Initial pose published: x={x}, y={y}, yaw={yaw}")
+        self.get_logger().info("Initial pose published")
 
-    # 오일러 각을 쿼터니언으로 변환
-    def euler_to_quaternion(self, roll, pitch, yaw):
-        x = math.sin(roll / 2) * math.cos(pitch / 2) * math.cos(yaw / 2) - math.cos(roll / 2) * math.sin(pitch / 2) * math.sin(yaw / 2)
-        y = math.cos(roll / 2) * math.sin(pitch / 2) * math.cos(yaw / 2) + math.sin(roll / 2) * math.cos(pitch / 2) * math.sin(yaw / 2)
-        z = math.cos(roll / 2) * math.cos(pitch / 2) * math.sin(yaw / 2) - math.sin(roll / 2) * math.sin(pitch / 2) * math.cos(yaw / 2)
-        w = math.cos(roll / 2) * math.cos(pitch / 2) * math.cos(yaw / 2) + math.sin(roll / 2) * math.sin(pitch / 2) * math.sin(yaw / 2)
-        return Quaternion(x=x, y=y, z=z, w=w)
 
-    # Nav2에 목표 좌표와 각 전달
+
     def send_goal(self):
         if self.goal_sent:
             self.get_logger().info('Goal already sent. Ignoring duplicate request.')
@@ -158,8 +124,8 @@ class MoveGoal(Node):
         waypoint1.pose.position.y = -0.4085067988873908
         waypoint1.pose.position.z = 0.0
 
-        waypoint1_yaw = 0.0
-        waypoint1.pose.orientation = self.euler_to_quaternion(0, 0, waypoint1_yaw)
+        
+        waypoint1.pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
 
         waypoints.append(waypoint1)
 
@@ -172,14 +138,12 @@ class MoveGoal(Node):
         waypoint2.pose.position.y = -0.24750621448314233
         waypoint2.pose.position.z = 0.0
 
-        waypoint2_yaw = 0.0
-        waypoint2.pose.orientation = self.euler_to_quaternion(0, 0, waypoint2_yaw)
+        waypoint2.pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
 
         waypoints.append(waypoint2)
 
         goal_msg = FollowWaypoints.Goal()
         goal_msg.poses = waypoints
-
 
         self.get_logger().info('Waiting for action server...')
         self.action_client.wait_for_server()
@@ -190,71 +154,25 @@ class MoveGoal(Node):
         )
         self.send_goal_future.add_done_callback(self.goal_response_callback)
         self.goal_sent = True  # Goal 전송 플래그 설정
+        self.timer = self.create_timer(120.0,self.check_person_timeout)
 
 
-        self.timer = self.create_timer(30.0, self.check_person_after_timeout)
-        self.get_logger().info("Timer for 30 seconds has been started.")
-
-    def check_person_after_timeout(self):
-        """
-        Called after a 30-second timeout to check for DetectPerson status.
-        If DetectPerson is False, publishes ServiceTerminate message and handles further actions.
-        """
+    def check_person_timeout(self):
         if not self.detect_person:  # DetectPerson 값이 False이면
-            self.get_logger().info('30 seconds passed, no person detected. Terminating service.')
+            self.get_logger().info('120 seconds passed, no person detected. Terminating service.')
 
             # ServiceTerminate 메시지 발행
             terminate_msg = String()
             terminate_msg.data = "AMR"
-            self.service_terminate_publisher.publish(terminate_msg)
+            self.ServiceTerminate_publisher.publish(terminate_msg)
             self.get_logger().info('Published ServiceTerminate message: AMR.')
 
             # 타이머 삭제
             self.destroy_timer(self.timer)
+            self.cancel_goal()
         else:
             self.get_logger().info('Person detected within 30 seconds. No ServiceTerminate needed.')
             self.destroy_timer(self.timer)  # 타이머 삭제
-
-
-    def feedback_callback(self, feedback_msg):
-        current_waypoint = feedback_msg.feedback.current_waypoint
-        self.get_logger().info(f'Feedback: Current waypoint {current_waypoint}')
-
-        if current_waypoint == 1:  # Waypoint2에 도달했을 때만 동작
-            self.get_logger().info('Waypoint2 reached. Initiating spin...')
-        self.spin_robot()  # 회전 로직 실행
-    
-    def result_callback(self, future):
-        result = future.result()
-        if result:
-            current_waypoint = result.result.feedback.current_waypoint
-
-            # 첫 번째 웨이포인트가 아닌 경우 회전 수행
-            if current_waypoint != 0:
-                self.get_logger().info('Goal reached successfully. Spinning robot.')
-                self.spin_robot()
-            else:
-                self.get_logger().info('Goal reached successfully. No spin for first waypoint.')
-        else:
-            self.get_logger().info('Goal failed.')
-
-    def spin_robot(self):
-        # Twist 메시지를 사용해 로봇을 회전
-        twist_msg = Twist()
-        twist_msg.angular.z = 1.0  # 회전 속도 (라디안/초)
-        
-        spin_time = 2 * math.pi / twist_msg.angular.z  # 한 바퀴 회전 시간 계산
-        start_time = time.time()
-
-        self.get_logger().info('Spinning robot...')
-        while time.time() - start_time < spin_time:
-            self.cmd_vel_publisher.publish(twist_msg)
-            time.sleep(0.1)  # 100ms 간격으로 퍼블리시
-
-        # 회전 멈춤
-        twist_msg.angular.z = 0.0
-        self.cmd_vel_publisher.publish(twist_msg)
-        self.get_logger().info('Spin complete.')
 
     def goal_response_callback(self, future):
         goal_handle = future.result()
@@ -264,6 +182,50 @@ class MoveGoal(Node):
 
         self.get_logger().info('Goal accepted.')
         self._goal_handle = goal_handle
+        self._goal_handle.get_result_async().add_done_callback(self.result_callback)
+
+
+    def feedback_callback(self, feedback_msg):
+        # Waypoint 도달 피드백 확인
+        current_waypoint_index = feedback_msg.feedback.current_waypoint
+        self.get_logger().info(f'Currently moving to waypoint: {current_waypoint_index}')
+
+
+
+
+    def result_callback(self, future):
+        result = future.result()
+        if not result:
+            self.get_logger().info('No result received or goal was rejected.')
+            return
+
+        self.get_logger().info(f'Action result received: {result}')
+        self.get_logger().info('Goal reached. Starting spin at goal...')
+        
+        # 목표 지점에서 회전 실행
+        self.spin_robot()
+
+        # 모든 목표 완료 후 Goal 취소
+        self.cancel_goal()
+
+
+    def spin_robot(self):
+        twist = Twist()
+        twist.linear.x = 0.0  # 직진 속도 (0: 직진하지 않음)
+        twist.angular.z = 0.5  # 회전 속도 (라디안/초)
+        angular_speed = twist.angular.z  # 라디안/초
+        rotation_time = 2 * math.pi / angular_speed  # 360도 회전 시간
+
+        start_time = time.time()
+        while time.time() - start_time < rotation_time:
+            self.cmd_vel_publisher.publish(twist)
+            time.sleep(0.1)  # 100ms 간격으로 퍼블리시
+
+        # 회전 멈춤
+        twist.angular.z = 0.0
+        self.cmd_vel_publisher.publish(twist)
+        self.get_logger().info('Spin complete.')
+
 
     def cancel_goal(self):
         if self._goal_handle is not None:
@@ -281,20 +243,31 @@ class MoveGoal(Node):
             self.get_logger().info('Goal cancellation failed.')
 
 
+    def detect_person_callback(self, msg):
+        # 메시지 내용 확인
+        self.get_logger().info(f"Received detection message: {msg.data}")
+        
+        # 특정 조건 만족 시 goal 취소
+        if msg.data and not self.goal_canceled:  # 메시지 조건 및 중복 실행 방지
+            self.get_logger().info("Condition met. Canceling goal...")
+            self.cancel_goal()
+            self.goal_canceled = True  # Goal 취소 플래그 설정
+
+
+
+
 def main():
     rclpy.init()
-    node = MoveGoal()
+    node = MoveWaypointGoal()
 
     # 초기 위치 설정
-    initial_x = 0.1007787823513794
-    initial_y = -0.01276879961445528
-    initial_yaw = 0.0
-    node.publish_initial_pose(initial_x, initial_y, initial_yaw)
+
+    node.publish_initial_pose()
 
 
     rclpy.spin(node)
     rclpy.shutdown()
 
-
+    
 if __name__ == '__main__':
     main()

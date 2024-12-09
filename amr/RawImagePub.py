@@ -7,7 +7,7 @@ import cv2  # OpenCV 라이브러리
 
 
 class RawImagePublisher(Node):
-    def __init__(self):
+    def __init__(self): 
         super().__init__('raw_image_publisher')  # 노드 이름 설정
 
         # QoS 설정: 속도 위주 (BEST_EFFORT, VOLATILE)
