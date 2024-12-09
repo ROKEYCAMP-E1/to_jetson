@@ -48,9 +48,9 @@ ros2 run nav2_map_server map_saver_cli -f ~/5W/map
 
  ros2 topic pub /DetectLuggage std_msgs/msg/Bool "data: true" --once
  
-ros2 run bellboy move_goal_waypoint 
+ros2 run bellboy move_goal_waypoint_end
 
-ros2 run bellboy move_init_pose
+ros2 run bellboy move_init_pose_end
 
 ros2 topic pub /DetectLuggage std_msgs/msg/Bool "data: true"
 ros2 topic pub /DetectPerson std_msgs/msg/Bool "data: true"

@@ -4,88 +4,89 @@ from geometry_msgs.msg import PoseWithCovarianceStamped, Quaternion
 from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
 from std_msgs.msg import String
-import math
+from rclpy.qos import QoSProfile
 
 
 class MoveInit(Node):
     def __init__(self):
         super().__init__('move_init')
 
+        # 현재 위치를 저장
         self.current_pose = None
+        self.triggered = False  # 플래그 변수
         self.timer = None
-        self._goal_handle = None
 
         # Action client for NavigateToPose
         self.action_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
 
-        # AMCL pose subscriber (deferred activation)
-        self.amcl_pose_subscriber = None
-
         # Service terminate subscriber
+        qos_profile = QoSProfile(depth=10)
         self.service_terminate_subscriber = self.create_subscription(
             String,
-            '/service_terminate',
+            '/ServiceTerminate',
             self.terminate_callback,
-            10
+            qos_profile
         )
 
     def terminate_callback(self, msg):
         """
-        Triggered when a service termination message is received.
-        Activates AMCL pose subscription to get the current position.
+        Callback for service termination message.
         """
-        self.get_logger().info(f"Service termination message received: {msg.data}")
+        if not self.triggered:  # 중복 실행 방지
+            self.triggered = True
+            self.get_logger().info(f"Service termination message received: {msg.data}")
 
-        # Subscribe to AMCL pose to get the current position
-        if not self.amcl_pose_subscriber:
-            self.amcl_pose_subscriber = self.create_subscription(
-                PoseWithCovarianceStamped,
-                '/amcl_pose',
-                self.amcl_pose_callback,
-                10
-            )
-            self.get_logger().info("Subscribed to AMCL pose to get current position.")
-        else:
-            self.get_logger().info("Already subscribed to AMCL pose.")
+            # 10초 대기를 Timer로 처리
+            self.get_logger().info("Waiting for 10 seconds before getting current position...")
+            self.timer = self.create_timer(10.0, self.start_amcl_subscription)
+
+    def start_amcl_subscription(self):
+        """
+        Start AMCL subscription after the 10-second wait.
+        """
+        self.timer.cancel()  # 타이머 중단
+        self.amcl_pose_subscriber = self.create_subscription(
+            PoseWithCovarianceStamped,
+            '/amcl_pose',
+            self.amcl_pose_callback,
+            10
+        )
+        self.get_logger().info("Subscribed to AMCL pose to get current position.")
 
     def amcl_pose_callback(self, msg):
         """
-        Callback to receive the current position from AMCL.
-        Cancels subscription after receiving the first position.
+        Callback for AMCL pose.
         """
-        if self.current_pose is None:
-            self.current_pose = msg
+        if self.current_pose is None:  # 첫 번째 위치만 처리
+            self.current_pose = msg  # 현재 위치 저장
             self.get_logger().info(
                 f"AMCL position received: x={msg.pose.pose.position.x}, y={msg.pose.pose.position.y}"
             )
-            # Cancel the AMCL pose subscription after receiving the first position
+
+            # 구독 중단
             self.destroy_subscription(self.amcl_pose_subscriber)
-            self.amcl_pose_subscriber = None
-            # Proceed to send the robot to the initial position
-            self.timer = self.create_timer(10.0, self.send_init_pose)
+
+            # 초기 위치로 이동 요청
+            self.send_init_pose()
 
     def send_init_pose(self):
         """
         Send the robot to the initial position.
         """
-        if self.timer:
-            self.timer.cancel()
-            self.timer = None
-
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose.header.frame_id = 'map'
         goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
 
-        # Set the initial position (example coordinates)
+        # 초기 위치 설정 (예제 좌표)
         goal_msg.pose.pose.position.x = 0.1007787823513794
         goal_msg.pose.pose.position.y = -0.01276879961445528
         goal_msg.pose.pose.position.z = 0.0
 
-        # Set the orientation
-        goal_msg.pose.pose.orientation = self.euler_to_quaternion(0, 0, 0.0)
+        # 방향 설정
+        goal_msg.pose.pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
 
         self.get_logger().info('Waiting for action server...')
-        self.action_client.wait_for_server()
+        self.action_client.wait_for_server()  # 액션 서버 준비 대기
         self.get_logger().info('Sending goal to initial position...')
 
         self.send_goal_future = self.action_client.send_goal_async(
@@ -94,24 +95,20 @@ class MoveInit(Node):
         self.send_goal_future.add_done_callback(self.goal_response_callback)
 
     def feedback_callback(self, feedback_msg):
+        """
+        Feedback callback for NavigateToPose action.
+        """
         self.get_logger().info(f'Feedback: {feedback_msg.feedback.current_pose.pose}')
 
     def goal_response_callback(self, future):
+        """
+        Callback for goal response.
+        """
         goal_handle = future.result()
         if not goal_handle.accepted:
             self.get_logger().info('Goal rejected.')
             return
         self.get_logger().info('Goal accepted.')
-
-    def euler_to_quaternion(self, roll, pitch, yaw):
-        """
-        Converts Euler angles to quaternion.
-        """
-        x = math.sin(roll / 2) * math.cos(pitch / 2) * math.cos(yaw / 2) - math.cos(roll / 2) * math.sin(pitch / 2) * math.sin(yaw / 2)
-        y = math.cos(roll / 2) * math.sin(pitch / 2) * math.cos(yaw / 2) + math.sin(roll / 2) * math.cos(pitch / 2) * math.sin(yaw / 2)
-        z = math.cos(roll / 2) * math.cos(pitch / 2) * math.sin(yaw / 2) - math.sin(roll / 2) * math.sin(pitch / 2) * math.cos(yaw / 2)
-        w = math.cos(roll / 2) * math.cos(pitch / 2) * math.cos(yaw / 2) + math.sin(roll / 2) * math.sin(pitch / 2) * math.sin(yaw / 2)
-        return Quaternion(x=x, y=y, z=z, w=w)
 
 
 def main():

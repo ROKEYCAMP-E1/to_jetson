@@ -230,28 +230,43 @@ class MoveWaypointGoal(Node):
     def cancel_goal(self):
         if self._goal_handle is not None:
             self.get_logger().info('Canceling goal...')
+            if not self._goal_handle.status:
+                self.get_logger().info('Goal is not active or already completed.')
+            return
+
             cancel_future = self._goal_handle.cancel_goal_async()
             cancel_future.add_done_callback(self.cancel_done_callback)
         else:
             self.get_logger().info('No active goal.')
 
-    def cancel_done_callback(self, future):
-        cancel_response = future.result()
-        if len(cancel_response.goals_canceling) > 0:
-            self.get_logger().info('Goal successfully canceled.')
-        else:
-            self.get_logger().info('Goal cancellation failed.')
-
-
     def detect_person_callback(self, msg):
-        # 메시지 내용 확인
         self.get_logger().info(f"Received detection message: {msg.data}")
         
-        # 특정 조건 만족 시 goal 취소
-        if msg.data and not self.goal_canceled:  # 메시지 조건 및 중복 실행 방지
-            self.get_logger().info("Condition met. Canceling goal...")
-            self.cancel_goal()
-            self.goal_canceled = True  # Goal 취소 플래그 설정
+        if msg.data and not self.goal_canceled:
+            self.detect_person = True
+            self.get_logger().info("Person detected. Canceling goal...")
+            if self._goal_handle is None:
+                self.get_logger().info("No active goal to cancel.")
+            else:
+                self.cancel_goal()
+            self.goal_canceled = True
+
+    def cancel_done_callback(self, future):
+        try:
+            cancel_response = future.result()
+            if len(cancel_response.goals_canceling) > 0:
+                self.get_logger().info('Goal successfully canceled.')
+            else:
+                self.get_logger().info('Goal cancellation failed. Proceeding to shutdown.')
+        except Exception as e:
+            self.get_logger().error(f"Error during goal cancellation: {e}")
+
+        # 노드 종료
+        self.shutdown_node()
+
+    def shutdown_node(self):
+        self.get_logger().info('Shutting down node...')
+        rclpy.shutdown()
 
 
 
